@@ -371,7 +371,6 @@ TEMPLATES = [
     "─−-−──−-−──−-−──−-−─"
     "|𒆜| Ищᴇᴛ  -〘 @Юɜ 〙"
     "─−-−──−-−──−-−──−-−─",
-
 ]
 
 # Компилируем шаблоны для лучшей производительности
@@ -454,26 +453,43 @@ async def handle_message(message: Message):
         if should_ignore_message(message):
             return
 
-        # Проверяем текст сообщения
-        if not message.text:
-            print("📝 Сообщение без текста (игнорируем)")
+        # Получаем текст сообщения (из обычного текста ИЛИ из подписи к фото)
+        message_text = message.text or message.caption or ""
+        
+        if not message_text:
+            print("📝 Сообщение совсем без текста (игнорируем)")
             return
 
         # Проверяем соответствие шаблонам
-        if check_message_against_templates(message.text):
+        if check_message_against_templates(message_text):
             print(f"📨 Найдено сообщение с шаблоном от {message.from_user.username or message.from_user.id}")
+            
+            # Определяем, есть ли фото
+            has_photo = bool(message.photo)
+            if has_photo:
+                print(f"🖼️ В сообщении есть фото")
 
-            # Пересылаем сообщение в канал от имени канала
+            # Пересылаем сообщение в канал
             try:
-                # Копируем сообщение (публикуем от имени канала)
-                await bot.copy_message(
-                    chat_id=TARGET_CHANNEL_ID,
-                    from_chat_id=SOURCE_CHAT_ID,
-                    message_id=message.message_id,
-                    caption=None,  # Убираем подпись, чтобы было от имени канала
-                    disable_notification=True
-                )
-                print(f"✅ Сообщение успешно скопировано в канал")
+                if has_photo:
+                    # Если есть фото - копируем всё сообщение с фото и подписью
+                    await bot.copy_message(
+                        chat_id=TARGET_CHANNEL_ID,
+                        from_chat_id=SOURCE_CHAT_ID,
+                        message_id=message.message_id,
+                        caption=message.caption,  # Сохраняем подпись
+                        disable_notification=True
+                    )
+                    print(f"✅ Сообщение с фото скопировано")
+                else:
+                    # Если только текст
+                    await bot.copy_message(
+                        chat_id=TARGET_CHANNEL_ID,
+                        from_chat_id=SOURCE_CHAT_ID,
+                        message_id=message.message_id,
+                        disable_notification=True
+                    )
+                    print(f"✅ Текстовое сообщение скопировано")
 
             except Exception as e:
                 print(f"❌ Ошибка при копировании: {e}")
@@ -536,7 +552,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
-
