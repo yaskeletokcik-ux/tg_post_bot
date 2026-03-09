@@ -347,7 +347,7 @@ TEMPLATES = [
     "─−-−──−-−──−-−──−-−─",
 
     # Шаблон 21: Подберите имя
-    "− ℧ − Пᴏдбᴇᴩиᴛᴇ Иʍя − ℧ −"
+     "− ℧ − Пᴏдбᴇᴩиᴛᴇ Иʍя − ℧ −"
     "─−-−──−-−──−-−──−-−─"
     "|𒆜| Оᴨиᴄᴀниᴇ Кᴏня/Лᴏɯᴀди »"
     "|𒆜| Кᴩиᴛᴇᴩии »"
@@ -391,19 +391,39 @@ class TemplateMatch:
 def check_message_against_templates(text: str) -> bool:
     """
     Проверяет сообщение на соответствие шаблонам
-
-    Args:
-        text: Текст сообщения
-
-    Returns:
-        True если сообщение соответствует одному из шаблонов
+    Теперь ищет ключевые слова, а не полное совпадение
     """
     if not text:
         return False
 
-    # Очищаем текст от лишних пробелов для лучшего сравнения
+    # Очищаем текст от лишних пробелов
     cleaned_text = ' '.join(text.split())
+    
+    # Ключевые слова из ваших шаблонов
+    keywords = [
+        "Пᴩᴏдᴀжᴀ",
+        "Пᴏᴩᴏдᴀ", 
+        "Мᴀᴄᴛь",
+        "Сᴨᴇциɸиᴋᴀ",
+        "Цᴇнᴀ",
+        "Бᴩᴏнь",
+        "Оцᴇниᴛᴇ Тᴩᴇйд",
+        "Сʙᴀᴨ",
+        "Ауᴋциᴏн",
+        "sᴇʟʟʜᴏʀsᴇ",
+        "ʀᴀᴛᴇᴛʜᴇᴛʀᴀᴅᴇ",
+        "𓄂",
+        "− ℧ −",
+        "𝐇𝐞𝐥𝐥ᎎ𝐢𝐠𝐞𝐫"
+    ]
+    
+    # Проверяем наличие ключевых слов
+    for keyword in keywords:
+        if keyword in cleaned_text:
+            print(f"✅ Найдено ключевое слово: {keyword}")
+            return True
 
+    # Если ключевых слов нет - проверяем по старым шаблонам
     for i, pattern in enumerate(COMPILED_TEMPLATES):
         if pattern.search(cleaned_text):
             print(f"✅ Найден шаблон {i + 1}")
@@ -455,6 +475,13 @@ async def handle_message(message: Message):
 
         # Получаем текст сообщения (из обычного текста ИЛИ из подписи к фото)
         message_text = message.text or message.caption or ""
+        
+        # ОТЛАДКА - чтобы видеть, что приходит
+        print(f"🔍 Проверяю сообщение:")
+        print(f"   Текст: {message_text[:100]}..." if message_text else "   Текст: пусто")
+        print(f"   Есть фото: {bool(message.photo)}")
+        print(f"   ID чата: {message.chat.id}")
+        print(f"   От кого: @{message.from_user.username if message.from_user else 'неизвестно'}")
         
         if not message_text:
             print("📝 Сообщение совсем без текста (игнорируем)")
