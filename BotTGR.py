@@ -435,25 +435,36 @@ def check_message_against_templates(text: str) -> bool:
 def should_ignore_message(message: Message) -> bool:
     """
     Проверяет, нужно ли игнорировать сообщение
-
-    Args:
-        message: Объект сообщения
-
-    Returns:
-        True если сообщение нужно игнорировать
     """
-    # Игнорируем сообщения от ботов
+    # 1. Проверяем, от бота ли сообщение
     if message.from_user and message.from_user.is_bot:
+        bot_id = message.from_user.id
+        bot_username = message.from_user.username or "без username"
+        
         # Проверяем, не входит ли бот в список игнорируемых
-        if message.from_user.id in IGNORED_BOT_IDS:
-            print(f"🤖 Игнорируем сообщение от бота {message.from_user.username or message.from_user.id}")
+        if bot_id in IGNORED_BOT_IDS:
+            print(f"🤖 Игнорируем сообщение от известного бота: @{bot_username} (ID: {bot_id})")
             return True
-
-    # Игнорируем команды (начинаются с /)
-    if message.text and message.text.startswith('/'):
-        print("⚠️ Игнорируем команду")
+        else:
+            # Если бот не в списке, всё равно игнорируем
+            print(f"🤖 Игнорируем сообщение от НЕИЗВЕСТНОГО бота: @{bot_username} (ID: {bot_id})")
+            return True
+    
+    # 2. Проверяем по ID
+    if message.from_user and message.from_user.id in IGNORED_BOT_IDS:
+        print(f"🤖 Игнорируем сообщение по ID бота: {message.from_user.id}")
         return True
-
+    
+    # 3. Игнорируем команды
+    if message.text and message.text.startswith('/'):
+        print(f"⚠️ Игнорируем команду: {message.text}")
+        return True
+    
+    # 4. Игнорируем каналы
+    if message.sender_chat and message.sender_chat.type == "channel":
+        print(f"📢 Игнорируем сообщение от канала: {message.sender_chat.title}")
+        return True
+    
     return False
 
 
@@ -579,3 +590,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
