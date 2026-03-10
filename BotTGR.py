@@ -331,7 +331,7 @@ TEMPLATES = [
     # Шаблон 20: Аукцион на сет
     "− ℧ − Ауᴋциᴏн Сᴇᴛᴀ − ℧ −"
     "─−-−──−-−──−-−──−-−─"
-    "|𒆜| Чᴛᴏ ʙхᴏдиᴛ »"
+       "|𒆜| Чᴛᴏ ʙхᴏдиᴛ »"
     "|𒆜| Цʙᴇᴛ|Тиᴩ »"
     "|𒆜| Сᴨᴇциɸиᴋᴀ »"
     "─−-−──−-−──−-−──−-−─"
@@ -347,7 +347,7 @@ TEMPLATES = [
     "─−-−──−-−──−-−──−-−─",
 
     # Шаблон 21: Подберите имя
-     "− ℧ − Пᴏдбᴇᴩиᴛᴇ Иʍя − ℧ −"
+    "− ℧ − Пᴏдбᴇᴩиᴛᴇ Иʍя − ℧ −"
     "─−-−──−-−──−-−──−-−─"
     "|𒆜| Оᴨиᴄᴀниᴇ Кᴏня/Лᴏɯᴀди »"
     "|𒆜| Кᴩиᴛᴇᴩии »"
@@ -375,6 +375,9 @@ TEMPLATES = [
 
 # Компилируем шаблоны для лучшей производительности
 COMPILED_TEMPLATES: List[Pattern] = [re.compile(template, re.DOTALL | re.IGNORECASE) for template in TEMPLATES]
+
+# Словарь для хранения медиа-групп (альбомов)
+media_groups = {}
 
 # ==================== ИНИЦИАЛИЗАЦИЯ БОТА ====================
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -435,6 +438,12 @@ def check_message_against_templates(text: str) -> bool:
 def should_ignore_message(message: Message) -> bool:
     """
     Проверяет, нужно ли игнорировать сообщение
+
+    Args:
+        message: Объект сообщения
+
+    Returns:
+        True если сообщение нужно игнорировать
     """
     # 1. Проверяем, от бота ли сообщение
     if message.from_user and message.from_user.is_bot:
@@ -455,12 +464,12 @@ def should_ignore_message(message: Message) -> bool:
         print(f"🤖 Игнорируем сообщение по ID бота: {message.from_user.id}")
         return True
     
-    # 3. Игнорируем команды
+    # 3. Игнорируем команды (начинаются с /)
     if message.text and message.text.startswith('/'):
         print(f"⚠️ Игнорируем команду: {message.text}")
         return True
     
-    # 4. Игнорируем каналы
+    # 4. Игнорируем сообщения от каналов
     if message.sender_chat and message.sender_chat.type == "channel":
         print(f"📢 Игнорируем сообщение от канала: {message.sender_chat.title}")
         return True
@@ -484,6 +493,38 @@ async def handle_message(message: Message):
         if should_ignore_message(message):
             return
 
+        # Проверяем, является ли сообщение частью медиа-группы (альбома)
+        if message.media_group_id:
+            # Это сообщение из альбома
+            group_id = message.media_group_id
+            
+            # Если это первое сообщение в группе, создаем запись
+            if group_id not in media_groups:
+                media_groups[group_id] = {
+                    'messages': [],
+                    'timer': None,
+                    'processed': False
+                }
+            
+            # Добавляем сообщение в группу
+            media_groups[group_id]['messages'].append(message)
+            print(f"📸 Добавлено фото в альбом {group_id}. Всего в альбоме: {len(media_groups[group_id]['messages'])}")
+            
+            # Если уже есть таймер, отменяем его
+            if media_groups[group_id]['timer']:
+                media_groups[group_id]['timer'].cancel()
+            
+            # Создаем новый таймер на 1 секунду для сбора всех фото
+            async def process_album():
+                await asyncio.sleep(1)  # Ждем 1 секунду для сбора всех фото
+                if group_id in media_groups and not media_groups[group_id]['processed']:
+                    await process_media_group(group_id)
+            
+            # Запускаем таймер
+            media_groups[group_id]['timer'] = asyncio.create_task(process_album())
+            
+            return
+        
         # Получаем текст сообщения (из обычного текста ИЛИ из подписи к фото)
         message_text = message.text or message.caption or ""
         
@@ -508,46 +549,111 @@ async def handle_message(message: Message):
                 print(f"🖼️ В сообщении есть фото")
 
             # Пересылаем сообщение в канал
-            try:
-                if has_photo:
-                    # Если есть фото - копируем всё сообщение с фото и подписью
-                    await bot.copy_message(
-                        chat_id=TARGET_CHANNEL_ID,
-                        from_chat_id=SOURCE_CHAT_ID,
-                        message_id=message.message_id,
-                        caption=message.caption,  # Сохраняем подпись
-                        disable_notification=True
-                    )
-                    print(f"✅ Сообщение с фото скопировано")
-                else:
-                    # Если только текст
-                    await bot.copy_message(
-                        chat_id=TARGET_CHANNEL_ID,
-                        from_chat_id=SOURCE_CHAT_ID,
-                        message_id=message.message_id,
-                        disable_notification=True
-                    )
-                    print(f"✅ Текстовое сообщение скопировано")
-
-            except Exception as e:
-                print(f"❌ Ошибка при копировании: {e}")
-
-                # Пробуем альтернативный способ - обычную пересылку
-                try:
-                    await bot.forward_message(
-                        chat_id=TARGET_CHANNEL_ID,
-                        from_chat_id=SOURCE_CHAT_ID,
-                        message_id=message.message_id
-                    )
-                    print(f"✅ Сообщение переслано (forward)")
-                except Exception as e2:
-                    print(f"❌ Ошибка при пересылке: {e2}")
+            await forward_single_message(message, has_photo)
 
         else:
             print("⏭️ Сообщение не соответствует шаблонам")
 
     except Exception as e:
         print(f"❌ Непредвиденная ошибка: {e}")
+
+
+async def process_media_group(group_id: str):
+    """Обрабатывает медиа-группу (альбом с несколькими фото)"""
+    try:
+        if group_id not in media_groups:
+            return
+        
+        group_data = media_groups[group_id]
+        messages = group_data['messages']
+        group_data['processed'] = True
+        
+        if not messages:
+            return
+        
+        print(f"🎯 Обрабатываю альбом с {len(messages)} фото")
+        
+        # Берем первое сообщение для проверки шаблона
+        first_message = messages[0]
+        message_text = first_message.caption or ""
+        
+        # Проверяем соответствие шаблонам
+        if check_message_against_templates(message_text):
+            print(f"📨 Найден шаблон в альбоме, пересылаю {len(messages)} фото")
+            
+            # Создаем медиа-группу для отправки
+            media = []
+            for i, msg in enumerate(messages):
+                if msg.photo:
+                    # Берем самое большое фото
+                    photo = msg.photo[-1]
+                    if i == 0:
+                        # Первое фото с подписью
+                        media.append(types.InputMediaPhoto(
+                            media=photo.file_id,
+                            caption=msg.caption or ""
+                        ))
+                    else:
+                        # Остальные фото без подписи
+                        media.append(types.InputMediaPhoto(
+                            media=photo.file_id
+                        ))
+            
+            # Отправляем медиа-группу в канал
+            if media:
+                await bot.send_media_group(
+                    chat_id=TARGET_CHANNEL_ID,
+                    media=media
+                )
+                print(f"✅ Альбом с {len(media)} фото успешно отправлен")
+        else:
+            print("⏭️ Альбом не соответствует шаблонам")
+    
+    except Exception as e:
+        print(f"❌ Ошибка при обработке альбома: {e}")
+    
+    finally:
+        # Очищаем данные группы
+        if group_id in media_groups:
+            del media_groups[group_id]
+
+
+async def forward_single_message(message: Message, has_photo: bool):
+    """Пересылает одиночное сообщение"""
+    try:
+        if has_photo:
+            # Если есть фото - копируем всё сообщение с фото и подписью
+            await bot.copy_message(
+                chat_id=TARGET_CHANNEL_ID,
+                from_chat_id=SOURCE_CHAT_ID,
+                message_id=message.message_id,
+                caption=message.caption,  # Сохраняем подпись
+                disable_notification=True
+            )
+            print(f"✅ Сообщение с фото скопировано")
+        else:
+            # Если только текст
+            await bot.copy_message(
+                chat_id=TARGET_CHANNEL_ID,
+                from_chat_id=SOURCE_CHAT_ID,
+                message_id=message.message_id,
+                disable_notification=True
+            )
+            print(f"✅ Текстовое сообщение скопировано")
+
+    except Exception as e:
+        print(f"❌ Ошибка при копировании: {e}")
+
+        # Пробуем альтернативный способ - обычную пересылку
+        try:
+            await bot.forward_message(
+                chat_id=TARGET_CHANNEL_ID,
+                from_chat_id=SOURCE_CHAT_ID,
+                message_id=message.message_id
+            )
+            print(f"✅ Сообщение переслано (forward)")
+        except Exception as e2:
+            print(f"❌ Ошибка при пересылке: {e2}")
 
 
 @dp.message(Command("start"))
@@ -557,7 +663,8 @@ async def cmd_start(message: Message):
         "👋 Бот запущен и работает!\n\n"
         f"Отслеживаю чат: {SOURCE_CHAT_ID}\n"
         f"Отправляю в канал: {TARGET_CHANNEL_ID}\n\n"
-        "Фильтры активны: игнорирую ботов и команды, реагирую только на шаблоны."
+        "Фильтры активны: игнорирую ботов и команды, реагирую только на шаблоны.\n"
+        "📸 Поддерживаются альбомы до 10 фото!"
     )
 
 
@@ -578,6 +685,7 @@ async def main():
     print(f"📋 ID канала-приемника: {TARGET_CHANNEL_ID}")
     print(f"🤖 Игнорируемые боты: {IGNORED_BOT_IDS}")
     print(f"📝 Загружено шаблонов: {len(TEMPLATES)}")
+    print("📸 Поддержка альбомов: ДА (до 10 фото)")
     print("=" * 50)
 
     try:
@@ -590,4 +698,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
